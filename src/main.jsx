@@ -3,10 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { startSignal } from './signal';
 import Disc from './Disc';
 import Intro from './Intro';
+import ReconstructText from './ReconstructText';
+import hiddenSignal from './media/recall.mp3';
+import hiddenSignalAltered from './media/recall-altered.mp3';
 import transmission from './media/micro.mp4';
 import soundtrack from './media/dwdekainstru.mp3';
 import emblem from './media/emblem.png';
-import SessionComparison from './SessionComparison';
+import SessionComparison, { sessions } from './SessionComparison';
 import PixelCursor, { trackPixelCursor } from './PixelCursor';
 import './style.css';
 
@@ -19,6 +22,9 @@ function App() {
   const [error, setError] = useState(false);
   const [channel, setChannel] = useState('film');
   const [discAngle, setDiscAngle] = useState(0);
+  const [recall, setRecall] = useState(null);
+  const [retained, setRetained] = useState(false);
+  const briefingActive = phase === 'playback' && channel === 'concept';
   const [interference, setInterference] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const music = useRef(null);
@@ -28,6 +34,10 @@ function App() {
   const intensity = useRef(1);
   const video = useRef(null);
   const audioContext = useRef(null);
+  const tuningAudio = useRef(null);
+  const tuningSource = useRef(null);
+  const tuningRequest = useRef(0);
+  const heardSignal = useRef(false);
   const archive = useRef(null);
   const briefing = useRef(null);
   const discStage = useRef(null);
@@ -43,7 +53,6 @@ function App() {
   useEffect(() => () => { audioContext.current?.close().catch(() => {}); }, []);
   useEffect(() => {
     music.current.volume = .42;
-    startMusic();
   }, []);
 
   function startMusic() {
@@ -55,10 +64,6 @@ function App() {
     if (musicDisabled.current) music.current.pause();
     else startMusic();
   }
-
-  const setRecallLevel = useCallback(active => {
-    if (music.current) music.current.volume = active ? .075 : .42;
-  }, []);
 
   useEffect(() => {
     if (reducedMotion || phase === 'boot') return;
@@ -89,6 +94,19 @@ function App() {
 
   useEffect(() => {
     if (phase === 'playback') archive.current.focus({ preventScroll: true });
+    if (phase === 'starting') {
+      const timeout = window.setTimeout(() => setPhase('playback'), 1550);
+      return () => clearTimeout(timeout);
+    }
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'closing') return;
+    const timeout = window.setTimeout(() => {
+      setPhase('ready');
+      requestAnimationFrame(() => access.current?.focus());
+    }, 2450);
+    return () => clearTimeout(timeout);
   }, [phase]);
 
   function begin() {
@@ -100,17 +118,58 @@ function App() {
       try {
         audioContext.current ??= new AudioContext();
         audioContext.current.resume().catch(() => {});
+        const context = audioContext.current;
+        tuningAudio.current ??= Promise.all([hiddenSignal, hiddenSignalAltered].map(async url => {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('Signal audio unavailable');
+          return context.decodeAudioData(await response.arrayBuffer());
+        })).catch(() => {
+          tuningAudio.current = null;
+          return null;
+        });
       } catch {
         // The optical disc can still be inspected if audio is unavailable.
       }
     }
     video.current.play().catch(() => {});
-    setPhase('playback');
+    setPhase('starting');
   }
 
   function leave() {
-    setPhase('ready');
-    requestAnimationFrame(() => access.current?.focus());
+    tuningRequest.current++;
+    tuningSource.current?.stop();
+    heardSignal.current = false;
+    setRetained(true);
+    setPhase('closing');
+  }
+
+  async function playTuningSignal(next) {
+    const context = audioContext.current;
+    if (musicDisabled.current || context?.state !== 'running' || !tuningAudio.current) return;
+    const altered = next === 'film';
+    if (altered && !heardSignal.current) return;
+    const request = ++tuningRequest.current;
+    const buffers = await tuningAudio.current;
+    if (!buffers || request !== tuningRequest.current || musicDisabled.current) return;
+    tuningSource.current?.stop();
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffers[Number(altered)];
+    source.connect(gain);
+    gain.connect(context.destination);
+    const now = context.currentTime;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(.67, now + .10);
+    gain.gain.setValueAtTime(.67, now + 1.4);
+    gain.gain.linearRampToValueAtTime(0, now + 1.85);
+    tuningSource.current = source;
+    source.onended = () => {
+      if (tuningSource.current === source) tuningSource.current = null;
+      source.disconnect();
+      gain.disconnect();
+    };
+    source.start(now, altered ? 3.8 : 2.4, 1.85);
+    heardSignal.current = !altered;
   }
 
   function tune(next) {
@@ -147,15 +206,18 @@ function App() {
       if (event.timeStamp - gesture.last > 320) {
         gesture.distance = 0;
         gesture.changed = false;
+        gesture.started = event.timeStamp;
       }
       gesture.last = event.timeStamp;
       if (gesture.changed) return;
       const delta = event.deltaY * (event.deltaMode ? 36 : 1);
       if (!delta || moveBriefing(delta)) return;
-      gesture.distance += delta;
-      if (Math.abs(gesture.distance) < 28) return;
+      gesture.distance += Math.max(-24, Math.min(24, delta));
+      if (Math.abs(gesture.distance) < 56) return;
       gesture.changed = true;
-      tune(gesture.distance > 0 ? 'concept' : 'film');
+      const next = gesture.distance > 0 ? 'concept' : 'film';
+      if (next !== channel && event.timeStamp - gesture.started >= 140) playTuningSignal(next);
+      tune(next);
     }
     receiver.addEventListener('wheel', onWheel, { passive: false });
     return () => receiver.removeEventListener('wheel', onWheel);
@@ -197,7 +259,7 @@ function App() {
   }
 
   return (
-    <main ref={cursorRoot} className={`crt ${phase}${interference && phase !== 'boot' ? ' drifting' : ''}`} aria-label="MICROCOSMOS Co. VR Systems">
+    <main ref={cursorRoot} className={`crt ${phase}${retained ? ' retained' : ''}${interference && phase !== 'boot' ? ' drifting' : ''}`} aria-label="MICROCOSMOS Co. VR Systems">
       <audio ref={music} src={soundtrack} loop preload="auto" onPlay={() => setSoundOn(true)} onPause={() => setSoundOn(false)} />
       <div className="glass">
         <canvas className="signal" ref={grain} aria-hidden="true" />
@@ -205,8 +267,10 @@ function App() {
           autoPlay loop muted playsInline preload="auto" src={transmission}
           onError={() => setError(true)} aria-hidden="true" />
         <div className="network-trace" aria-hidden="true" />
-        {phase !== 'playback' && <span className="terminal-status"><i aria-hidden="true" />{phase === 'boot' ? 'ESTABLISHING LINK' : 'RECALL TERMINAL ONLINE'}</span>}
-        {phase === 'boot' && <Intro reducedMotion={reducedMotion} signal={intensity} onExit={finishIntro} onInteract={startMusic} />}
+        {['boot', 'ready'].includes(phase) && <span className="terminal-status"><i aria-hidden="true" /><ReconstructText active>{phase === 'boot' ? 'ESTABLISHING LINK' : 'RECALL TERMINAL ONLINE'}</ReconstructText></span>}
+        {phase === 'boot' && <Intro reducedMotion={reducedMotion} signal={intensity} onExit={finishIntro} onInteract={startMusic} onRecall={setRecall} />}
+        {phase === 'starting' && <div className="session-closed" role="status"><ReconstructText active>Session started.</ReconstructText></div>}
+        {phase === 'closing' && <div className="session-closed" role="status"><span><ReconstructText active>Session closed.</ReconstructText></span><span><ReconstructText active delay={350}>One memory was retained.</ReconstructText></span></div>}
         {phase === 'ready' && <section className="reveal" aria-labelledby="title">
           <div className="emblem" ref={reveal} aria-hidden="true"
             onPointerDown={event => {
@@ -222,12 +286,12 @@ function App() {
               <img src={emblem} alt="" draggable="false" />
             </div>
           </div>
-          <h1 id="title">MICROCOSMOS <span>Co. VR Systems</span></h1>
-          <p className="premise">Return to a moment that still feels like home.</p>
-          <p className="whisper">Personal memory reconstruction in virtual reality.</p>
-          <button ref={access} className="command access" onClick={begin}><span aria-hidden="true">▸</span> ACCESS TRANSMISSION</button>
+          <h1 id="title"><ReconstructText active delay={240}>MICROCOSMOS</ReconstructText><span className="brand-subtitle"><ReconstructText active delay={380}>Co. VR Systems</ReconstructText></span></h1>
+          <p className="premise"><ReconstructText active delay={430}>Return to a moment that still feels like home.</ReconstructText></p>
+          <p className="whisper"><ReconstructText active delay={580}>Personal memory reconstruction in virtual reality.</ReconstructText></p>
+          <button ref={access} className="command access" onClick={begin}><span aria-hidden="true">▸</span> <ReconstructText active delay={730}>ACCESS TRANSMISSION</ReconstructText></button>
         </section>}
-        {phase === 'ready' && <button className="command rewind" onClick={() => setPhase('boot')}>↺ REPLAY INTRO</button>}
+        {phase === 'ready' && <button className="command rewind" onClick={() => { setRecall(null); setPhase('boot'); }}>↺ REPLAY INTRO</button>}
         <div ref={archive} className="channels" hidden={phase !== 'playback'} tabIndex={0} role="region" aria-label="Transmission and concept"
           onTouchStart={event => { swipe.current = event.touches.length === 1 ? event.touches[0].clientY : null; }}
           onTouchCancel={() => { swipe.current = null; }}
@@ -238,9 +302,13 @@ function App() {
             if (Math.abs(distance) > 45 && !moveBriefing(distance * 2)) tune(distance > 0 ? 'concept' : 'film');
           }}>
           <section className="transmission-frame channel-pane" data-active={channel === 'film'} inert={channel !== 'film'} aria-label="Company transmission">
-            <span className="terminal-status playback-status"><i aria-hidden="true" /> CH 01 / TRANSMISSION</span>
+            <span className="terminal-status playback-status"><i aria-hidden="true" /> <ReconstructText active={phase === 'playback' && channel === 'film'}>CH 01 / TRANSMISSION</ReconstructText></span>
             {error && <p className="video-error" role="status">SIGNAL LOST</p>}
-            <button className="command descend" onClick={() => tune('concept')}>↓ CH 02 / SYSTEM BRIEFING</button>
+            <p className="transmission-motto"><ReconstructText active={phase === 'playback' && channel === 'film'} delay={360}>The past is closer than you remember.</ReconstructText></p>
+            <div className="transmission-navigation">
+              <p className="tune-hint"><span className="wheel-hint">SCROLL DOWN TO TUNE</span><span className="swipe-hint">SWIPE UP TO TUNE</span></p>
+              <button className="command" onClick={() => tune('concept')}><ReconstructText active={phase === 'playback' && channel === 'film'} delay={160}>↓ CH 02 / SYSTEM BRIEFING</ReconstructText></button>
+            </div>
           </section>
           <section ref={briefing} className="concept channel-pane" data-active={channel === 'concept'} inert={channel !== 'concept'}
             aria-labelledby="concept-title" onScroll={event => {
@@ -249,29 +317,37 @@ function App() {
               setDiscAngle(progress * 150 + extraTurn.current);
             }}>
             <div className="concept-copy">
-            <p className="concept-label terminal-path">CH 02 / CLIENT BRIEFING</p>
-            <h2 id="concept-title">Your return session.</h2>
+            <p className="concept-label terminal-path"><ReconstructText active={briefingActive}>CH 02 / CLIENT BRIEFING</ReconstructText></p>
+            <h2 id="concept-title"><ReconstructText active={briefingActive} delay={90}>Your return session.</ReconstructText></h2>
             <div className="concept-columns">
               <div>
-                <h3>Session overview</h3>
-                <p>Select a moment from your past. The system uses fragments you can still recall to reconstruct it as a VR session.</p>
-                <p>When two details conflict, the system selects the one you’re most likely to recognize.</p>
+                <h3><ReconstructText active={briefingActive} delay={160}>Session overview</ReconstructText></h3>
+                <p><ReconstructText active={briefingActive} delay={220}>Select a moment from your past. The system uses fragments you can still recall to reconstruct it as a VR session.</ReconstructText></p>
+                <p><ReconstructText active={briefingActive} delay={300}>When two details conflict, the system selects the one you’re most likely to recognize.</ReconstructText></p>
               </div>
               <div>
-                <h3>Known effects</h3>
-                <p>Some clients report remembering details first encountered during a session. Repeated visits may make the reconstructed version easier to recall.</p>
-                <p>If you find yourself missing a place you can only remember in the headset, wait until the feeling passes before scheduling another visit.</p>
+                <h3><ReconstructText active={briefingActive} delay={190}>Known effects</ReconstructText></h3>
+                <p><ReconstructText active={briefingActive} delay={260}>Some clients report remembering details first encountered during a session. Repeated visits may make the reconstructed version easier to recall.</ReconstructText></p>
+                <p><ReconstructText active={briefingActive} delay={340}>If you find yourself missing a place you can only remember in the headset, wait until the feeling passes before scheduling another visit.</ReconstructText></p>
               </div>
             </div>
-              <SessionComparison />
+              <SessionComparison recall={recall} active={briefingActive} />
               <div className="briefing-actions">
-                <button className="command" onClick={() => tune('film')}>↑ CH 01 / TRANSMISSION</button>
-                <button className="command" onClick={() => discStage.current.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' })}>↓ INSPECT DISC</button>
+                <button className="command" onClick={() => tune('film')}><ReconstructText active={briefingActive} delay={410}>↑ CH 01 / TRANSMISSION</ReconstructText></button>
+                <button className="command" onClick={() => discStage.current.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' })}><ReconstructText active={briefingActive} delay={450}>↓ INSPECT DISC</ReconstructText></button>
               </div>
             </div>
             <div ref={discStage} className="disc-stage">
               <p className="concept-label terminal-path">CH 02 / OPTICAL MEDIA</p>
-              {phase === 'playback' && channel === 'concept' && <Disc position={discAngle} audioContext={audioContext.current} onRecallActive={setRecallLevel} />}
+              <div className="disc-gallery">
+                {briefingActive && <Disc position={discAngle} />}
+                <section className="disc-index" aria-labelledby="disc-index-title">
+                  <h2 id="disc-index-title">Recovered recordings</h2>
+                  <ul>
+                    {sessions.map(record => <li key={record.id}><span>{record.id}</span><span>{record.name}</span></li>)}
+                  </ul>
+                </section>
+              </div>
               {presaveAvailable
                 ? <a className="command presave" href={presaveUrl} target="_blank" rel="noopener noreferrer">ACCESS PRE-SAVE ↗</a>
                 : <div className="presave-pending">

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { startSignal } from './signal';
 import PixelCursor from './PixelCursor';
+import ReconstructText from './ReconstructText';
 
-const sessions = [
+export const sessions = [
   {
     id: '017', name: 'Someone at the door', category: 'FAMILY',
     cue: 'Three knocks, spaced unevenly.',
@@ -48,15 +49,27 @@ const sessions = [
 ];
 
 const activationKeys = [' ', 'Enter'];
+const inferredDetails = {
+  'A voice': 'A voice said your name twice. The second time, it sounded closer.',
+  'A song': 'The song stopped before the final note. You kept humming it.',
+  'A sound': 'There were three knocks. You were already waiting for the third.',
+};
 
-export default function SessionComparison() {
+export default function SessionComparison({ recall, active }) {
   const [held, setHeld] = useState(false);
   const [selected, setSelected] = useState(0);
   const [open, setOpen] = useState(false);
   const panel = useRef(null);
   const screen = useRef(null);
   const interference = useRef(.31);
-  const session = sessions[selected];
+  const records = recall ? [...sessions, {
+    id: '071', name: 'Current visitor', category: 'RECALL TEST',
+    cue: 'Source: your response at the terminal.',
+    before: recall,
+    after: inferredDetails[recall],
+    note: 'The system recorded this detail as part of the visitor’s original response.',
+  }] : sessions;
+  const session = records[selected] ?? records[0];
 
   useEffect(() => {
     if (open) return startSignal(screen.current, interference, matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -65,9 +78,10 @@ export default function SessionComparison() {
   return <>
     <button className="command archive-open" onClick={() => {
       panel.current.showModal();
+      if (recall) setSelected(records.length - 1);
       setOpen(true);
     }}>
-      <span aria-hidden="true">▣</span> RECOVERED SESSION ARCHIVE <span aria-hidden="true">↗</span>
+      <span aria-hidden="true">▣</span> <ReconstructText active={active} delay={390}>RECOVERED SESSION ARCHIVE</ReconstructText> <span aria-hidden="true">↗</span>
     </button>
     <dialog className="session-archive" ref={panel} aria-labelledby="archive-title" onClose={() => {
       setHeld(false);
@@ -82,7 +96,7 @@ export default function SessionComparison() {
       <div className="archive-location"><span>MICROCOSMOS Co. VR Systems</span><span>Archive / Recovered / Client records</span></div>
       <div className="archive-body">
         <nav className="archive-index" aria-label="Recovered session files">
-          {sessions.map((record, index) => (
+          {records.map((record, index) => (
             <button key={record.id} className="archive-file" aria-current={index === selected ? 'true' : undefined} onClick={() => {
               setSelected(index);
               setHeld(false);
@@ -92,14 +106,14 @@ export default function SessionComparison() {
         <article className="archive-record" aria-labelledby="record-title">
           <div className="archive-trace" aria-hidden="true">010011 001011 110010 010111 100110 001001 011110 110010 001101 010101 001110 110001 010011 001011 110010 010111 100110 001001 011110 110010 001101 010101 001110 110001</div>
           <div className="record-header">
-            <p className="concept-label">SESSION {session.id} / {session.category}</p>
-            <h3 id="record-title">{session.name}</h3>
-            <p className="memory-cue">{session.cue}</p>
+            <p className="concept-label"><ReconstructText active={open}>{`SESSION ${session.id} / ${session.category}`}</ReconstructText></p>
+            <h3 id="record-title"><ReconstructText active={open} delay={80}>{session.name}</ReconstructText></h3>
+            <p className="memory-cue"><ReconstructText active={open} delay={120}>{session.cue}</ReconstructText></p>
           </div>
           <div className="comparison-frame" data-reconstructed={held} aria-live="polite">
-            <p className="concept-label">{held ? '02 / RECONSTRUCTED MEMORY' : '01 / SOURCE MEMORY'}</p>
-            <blockquote>“{held ? session.after : session.before}”</blockquote>
-            <p className="interview-result">{held ? session.note : 'Client intake transcript.'}</p>
+            <p className="concept-label"><ReconstructText active={open}>{held ? '02 / RECONSTRUCTED MEMORY' : '01 / SOURCE MEMORY'}</ReconstructText></p>
+            <blockquote><ReconstructText active={open} delay={120}>{`“${held ? session.after : session.before}”`}</ReconstructText></blockquote>
+            <p className="interview-result"><ReconstructText active={open} delay={180}>{held ? session.note : 'Client intake transcript.'}</ReconstructText></p>
           </div>
           <button className="command compare-hold" aria-pressed={held}
             onPointerDown={event => {
@@ -123,7 +137,7 @@ export default function SessionComparison() {
             }}>HOLD TO COMPARE</button>
         </article>
       </div>
-      <div className="archive-status"><span>{sessions.length} RECOVERED FILES</span><span>READ ONLY</span></div>
+      <div className="archive-status"><span>{records.length} RECOVERED FILES</span><span>READ ONLY</span></div>
       </div>
       <div className="phosphor" aria-hidden="true" />
       <div className="glass-gloss" aria-hidden="true" />

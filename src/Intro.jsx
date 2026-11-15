@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import ReconstructText from './ReconstructText';
 
 const scenes = [
   {
@@ -14,15 +15,17 @@ const scenes = [
     transfer: ['SOURCE RECORD VERIFIED', 'OPENING RECALL TERMINAL'],
   },
 ];
+const recallOptions = ['A voice', 'A song', 'A sound'];
 
 const codeColumns = Array.from({ length: 20 }, (_, column) =>
   Array.from({ length: 54 }, (_, row) => ((row * 1597 + column * 371 + row * column * 47) % 65536)
     .toString(16).toUpperCase().padStart(4, '0')).join('\n'));
 
-export default function Intro({ reducedMotion, signal, onExit, onInteract }) {
+export default function Intro({ reducedMotion, signal, onExit, onInteract, onRecall }) {
   const [step, setStep] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [transferring, setTransferring] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const locked = useRef(false);
   const scene = scenes[step];
   const [firstAt, secondAt, readyAt] = scene.timing;
@@ -31,7 +34,7 @@ export default function Intro({ reducedMotion, signal, onExit, onInteract }) {
   const second = reducedMotion ? scene.second : scene.second.slice(0, Math.max(0, Math.floor((elapsed - secondAt) / 104)));
 
   useEffect(() => {
-    if (reducedMotion || transferring) return;
+    if (reducedMotion || transferring || choosing) return;
     const started = performance.now();
     const timer = window.setInterval(() => {
       const time = performance.now() - started;
@@ -39,7 +42,7 @@ export default function Intro({ reducedMotion, signal, onExit, onInteract }) {
       if (time >= readyAt) window.clearInterval(timer);
     }, 45);
     return () => window.clearInterval(timer);
-  }, [step, readyAt, transferring, reducedMotion]);
+  }, [step, readyAt, transferring, choosing, reducedMotion]);
 
   useEffect(() => {
     if (!transferring) return;
@@ -49,10 +52,8 @@ export default function Intro({ reducedMotion, signal, onExit, onInteract }) {
         onExit();
         return;
       }
-      setElapsed(0);
-      setStep(step + 1);
+      setChoosing(true);
       setTransferring(false);
-      locked.current = false;
     }, reducedMotion ? 0 : 1500);
     return () => {
       window.clearTimeout(timer);
@@ -81,7 +82,19 @@ export default function Intro({ reducedMotion, signal, onExit, onInteract }) {
 
   return <>
     <div className="intro-shell">
-      {transferring ? <div className="intro-transfer" aria-label={scene.transfer[1]}>
+      {choosing ? <section className="recall-test" aria-labelledby="recall-question">
+        <p className="concept-label"><ReconstructText active>RECALL TEST / SELECT FIRST IMPRESSION</ReconstructText></p>
+        <h2 id="recall-question"><ReconstructText active delay={120}>What do you remember first?</ReconstructText></h2>
+        <div>
+          {recallOptions.map(option => <button key={option} className="command recall-option" onClick={() => {
+            onRecall(option);
+            setElapsed(0);
+            setStep(1);
+            setChoosing(false);
+            locked.current = false;
+          }}><ReconstructText active delay={200}>{option}</ReconstructText></button>)}
+        </div>
+      </section> : transferring ? <div className="intro-transfer" aria-label={scene.transfer[1]}>
         <div className="matrix-stream" aria-hidden="true">
           {codeColumns.map((code, column) => <span key={column} style={{ '--column-delay': `-${column * .12}s` }}>{code}</span>)}
         </div>

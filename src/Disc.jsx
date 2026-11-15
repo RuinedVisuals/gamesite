@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import emblem from './media/emblem.png';
-import originalRecall from './media/recall.mp3';
-import alteredRecall from './media/recall-altered.mp3';
 
 const vertexShader = `
   varying vec2 discPoint;
@@ -40,82 +38,10 @@ const fragmentShader = `
   }
 `;
 
-export default function Disc({ position, audioContext, onRecallActive }) {
+export default function Disc({ position }) {
   const canvas = useRef(null);
   const angle = useRef(position);
   const [available, setAvailable] = useState(true);
-  const [unlocked, setUnlocked] = useState(false);
-  const [audioState, setAudioState] = useState('idle');
-  const playback = useRef(null);
-  const recovered = useRef(false);
-  const attempted = useRef(false);
-  const busy = ['loading', 'original', 'altered'].includes(audioState);
-
-  useEffect(() => {
-    onRecallActive(busy);
-    return () => onRecallActive(false);
-  }, [busy, onRecallActive]);
-
-  function stopRecall() {
-    const current = playback.current;
-    if (!current) return;
-    playback.current = null;
-    current.abort.abort();
-    window.clearTimeout(current.delay);
-    if (current.source) {
-      current.source.onended = null;
-      current.source.stop();
-      current.source.disconnect();
-    }
-  }
-
-  async function playRecall() {
-    if (!audioContext || playback.current) return;
-    const run = { abort: new AbortController() };
-    playback.current = run;
-    setAudioState('loading');
-    try {
-      await audioContext.resume();
-      const clips = await Promise.all([originalRecall, alteredRecall].map(async url => {
-        const response = await fetch(url, { signal: run.abort.signal });
-        if (!response.ok) throw new Error('Audio unavailable');
-        return audioContext.decodeAudioData(await response.arrayBuffer());
-      }));
-      if (playback.current !== run) return;
-      function playPass(index) {
-        if (playback.current !== run) return;
-        const source = audioContext.createBufferSource();
-        run.source = source;
-        source.buffer = clips[index];
-        source.connect(audioContext.destination);
-        source.onended = () => {
-          source.disconnect();
-          run.source = null;
-          if (!index) {
-            run.delay = window.setTimeout(() => playPass(1), 670);
-          } else {
-            playback.current = null;
-            setAudioState('complete');
-          }
-        };
-        setAudioState(index ? 'altered' : 'original');
-        source.start();
-      }
-      playPass(0);
-    } catch {
-      if (playback.current !== run) return;
-      stopRecall();
-      setAudioState('retry');
-    }
-  }
-
-  useEffect(() => stopRecall, []);
-  useEffect(() => {
-    if (!unlocked || attempted.current) return;
-    attempted.current = true;
-    if (audioContext?.state === 'running') playRecall();
-  }, [unlocked, audioContext]);
-
   useEffect(() => { angle.current = position; }, [position]);
 
   useEffect(() => {
@@ -175,10 +101,7 @@ export default function Disc({ position, audioContext, onRecallActive }) {
       disc.rotation.z = -.19;
       tilt.set(disc.rotation.x, disc.rotation.y);
       renderer.render(scene, camera);
-      if (!recovered.current && Math.cos(disc.rotation.y) < -.56) {
-        recovered.current = true;
-        setUnlocked(true);
-      }
+
     });
 
     return () => {
@@ -193,26 +116,7 @@ export default function Disc({ position, audioContext, onRecallActive }) {
     };
   }, []);
 
-  const status = {
-    loading: 'READING AUDIO TRACK…',
-    original: 'PLAYBACK 01 / SOURCE MEMORY',
-    altered: 'PLAYBACK 02 / RECONSTRUCTED MEMORY',
-    complete: 'REPLAY RECOVERED AUDIO',
-    retry: 'RETRY RECOVERED AUDIO',
-    idle: 'PLAY RECOVERED AUDIO',
-  }[audioState];
-  return <>
-    {available ? <canvas ref={canvas} className="disc-model" role="img" aria-label="Iridescent optical disc with the MICROCOSMOS logo" />
-      : <div className="disc-fallback" role="img" aria-label="MICROCOSMOS optical disc"><img src={emblem} alt="" /></div>}
-    <div className="recall-readout" aria-live="polite">
-      {(unlocked || !available) && (audioContext
-        ? <button className="command" onClick={() => {
-            if (busy) {
-              stopRecall();
-              setAudioState('idle');
-            } else playRecall();
-          }}>{busy ? '■ ' : '▸ '}{status}</button>
-        : <p>AUDIO OUTPUT UNAVAILABLE</p>)}
-    </div>
-  </>;
+  return available
+    ? <canvas ref={canvas} className="disc-model" role="img" aria-label="Iridescent optical disc with the MICROCOSMOS logo" />
+    : <div className="disc-fallback" role="img" aria-label="MICROCOSMOS optical disc"><img src={emblem} alt="" /></div>;
 }
