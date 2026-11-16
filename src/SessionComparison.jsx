@@ -93,7 +93,7 @@ export default function SessionComparison({ recall, active }) {
         <h2 id="archive-title"><span aria-hidden="true">▣</span> Recovered Sessions</h2>
         <form method="dialog"><button className="archive-close" aria-label="Close archive">×</button></form>
       </header>
-      <div className="archive-location"><span>MICROCOSMOS Co. VR Systems</span><span>Archive / Recovered / Client records</span></div>
+      <div className="archive-location"><span>MICROCOSMOS Co. — Memory Restore VR Systems</span><span>Archive / Recovered / Client records</span></div>
       <div className="archive-body">
         <nav className="archive-index" aria-label="Recovered session files">
           {records.map((record, index) => (

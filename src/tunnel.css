@@ -1,0 +1,83 @@
+.tunnel {
+  background: #070d2a;
+  isolation: isolate;
+}
+.tunnel-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.tunnel-scene { display: block; touch-action: none; }
+.tunnel-grain {
+  opacity: .43;
+  mix-blend-mode: screen;
+}
+.tunnel .phosphor {
+  opacity: .88;
+  background:
+    repeating-linear-gradient(0deg, #010210b8 0 1px, #080f4033 1px 2px, transparent 2px 4px),
+    repeating-linear-gradient(90deg, #ef23301c 0 1px, #59fc5114 1px 2px, #3e66ff29 2px 3px);
+}
+.tunnel-footage.interference-footage {
+  opacity: .42;
+  filter: blur(.75px) brightness(.86) contrast(1.35) saturate(.82);
+}
+.tunnel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(0deg, #03071c 0%, transparent 37%, transparent 83%, #03071caa);
+}
+.tunnel-return, .tunnel-title, .tunnel-controls {
+  position: absolute;
+  z-index: 5;
+}
+.tunnel :is(.tunnel-return, .tunnel-controls, .tunnel-title p, .tunnel-controls button) {
+  text-shadow: -.6px 0 #f36fa16b, .8px 0 #72ceffb3, 0 0 6px #729fff;
+}
+.tunnel-return {
+  top: 24px;
+  left: clamp(16px, 5vw, 80px);
+  text-decoration: none;
+}
+.tunnel-title {
+  bottom: clamp(32px, 8vh, 90px);
+  left: clamp(16px, 5vw, 80px);
+  pointer-events: none;
+}
+.tunnel-title h1 {
+  margin: .16em 0 .22em;
+  font-size: clamp(2.2rem, 6vw, 6.2rem);
+  letter-spacing: -.055em;
+  line-height: .95;
+  color: #e4efff;
+  text-shadow: -1.5px 0 #e96c9d91, 1.6px 0 #55d3ffc2, 0 0 5px #b2d4ff, 0 0 23px #668cff;
+  filter: blur(.45px);
+}
+.tunnel-company, .tunnel-controls {
+  color: #a8c9ff;
+  font-size: 11px;
+  letter-spacing: .09em;
+}
+.tunnel-company { margin: 0; }
+.tunnel-controls {
+  right: clamp(16px, 5vw, 80px);
+  bottom: clamp(32px, 8vh, 90px);
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+.tunnel-controls button {
+  width: 40px;
+  height: 34px;
+  margin-left: 5px;
+  border: 1px solid #8ab5ff85;
+  background: #071236bb;
+}
+@media (max-width: 650px) {
+  .tunnel-title { bottom: 135px; }
+  .tunnel-controls { left: 16px; right: auto; bottom: 20px; justify-items: start; }
+  .tunnel-controls button { margin: 0 5px 0 0; }
+}

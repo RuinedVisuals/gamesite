@@ -588,3 +588,4 @@ h1 .brand-subtitle {
   .channel-pane { transition: none !important; }
   .channel-switch { display: none; }
 }
+.tunnel-link { text-decoration: none; }

@@ -12,6 +12,7 @@ const fragmentShader = `
   varying vec2 screenUV;
   uniform float time;
   uniform float interference;
+  uniform float grain;
 
   float hash(vec2 p) {
     p = fract(p * vec2(321.319, 412.495));
@@ -46,11 +47,13 @@ const fragmentShader = `
     glow += vec3(.085, .125, .205) * dust * (.28 + grit * .29);
     float dropout = pow(hash(vec2(row, floor(uv.x * 8.0))), 15.0);
     glow *= 1.0 - dropout * .22;
+    float coarseGrit = hash(floor(uv * vec2(420.0, 285.0)) + tick);
+    glow += vec3(.26, .34, .68) * (coarseGrit - .5) * grain;
     gl_FragColor = vec4(glow * scan, 1.0);
   }
 `;
 
-export function startSignal(canvas, strength, reducedMotion) {
+export function startSignal(canvas, strength, reducedMotion, grain = 0) {
   let renderer;
   try {
     renderer = new WebGLRenderer({ canvas, powerPreference: 'low-power' });
@@ -67,6 +70,7 @@ export function startSignal(canvas, strength, reducedMotion) {
     uniforms: {
       time: { value: 0 },
       interference: { value: .23 },
+      grain: { value: grain },
     },
   });
   const screen = new Mesh(geometry, material);

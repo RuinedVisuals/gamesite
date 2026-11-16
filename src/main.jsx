@@ -318,7 +318,7 @@ function App() {
   }
 
   return (
-    <main ref={cursorRoot} className={`crt ${phase}${retained ? ' retained' : ''}${interference && phase !== 'boot' ? ' drifting' : ''}`} aria-label="MICROCOSMOS Co. VR Systems">
+    <main ref={cursorRoot} className={`crt ${phase}${retained ? ' retained' : ''}${interference && phase !== 'boot' ? ' drifting' : ''}`} aria-label="MICROCOSMOS Co. — Memory Restore VR Systems">
       <audio ref={music} src={soundtrack} loop preload="auto" onPlay={() => setSoundOn(true)} onPause={() => setSoundOn(false)} />
       <div className="glass">
         <canvas className="signal" ref={grain} aria-hidden="true" />
@@ -356,7 +356,7 @@ function App() {
               <img src={emblem} alt="" draggable="false" />
             </div>
           </div>
-          <h1 id="title"><ReconstructText active delay={240}>MICROCOSMOS</ReconstructText><span className="brand-subtitle"><ReconstructText active delay={380}>Co. VR Systems</ReconstructText></span></h1>
+          <h1 id="title"><ReconstructText active delay={240}>MICROCOSMOS Co.</ReconstructText><span className="brand-subtitle"><ReconstructText active delay={380}>Memory Restore VR Systems</ReconstructText></span></h1>
           <p className="premise"><ReconstructText active delay={430}>Return to a moment that still feels like home.</ReconstructText></p>
           <p className="whisper"><ReconstructText active delay={580}>Personal memory reconstruction in virtual reality.</ReconstructText></p>
           <button ref={access} className="command access" onClick={begin}><span aria-hidden="true">▸</span> <ReconstructText active delay={730}>ACCESS TRANSMISSION</ReconstructText></button>
@@ -410,6 +410,7 @@ function App() {
             </div>
               <SessionComparison recall={recall} active={briefingActive} />
               <div className="briefing-actions">
+                <a className="command tunnel-link" href={import.meta.env.BASE_URL + "tunnel/"}><ReconstructText active={briefingActive} delay={430}>↗ MEMORY TUNNEL</ReconstructText></a>
                 <button className="command" onClick={() => tune('film')}><ReconstructText active={briefingActive} delay={410}>↑ CH 01 / TRANSMISSION</ReconstructText></button>
                 <button className="command" onClick={() => scrollBriefing(discStage.current.offsetTop)}><ReconstructText active={briefingActive} delay={450}>↓ INSPECT DISC</ReconstructText></button>
               </div>
