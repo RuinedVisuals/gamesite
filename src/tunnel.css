@@ -9,6 +9,7 @@
   height: 100%;
 }
 .tunnel-scene { display: block; touch-action: none; }
+.tunnel-scene-unavailable { background: #070d2a; }
 .tunnel-grain {
   opacity: .43;
   mix-blend-mode: screen;
@@ -62,6 +63,79 @@
   letter-spacing: .09em;
 }
 .tunnel-company { margin: 0; }
+.tunnel-messages {
+  position: absolute;
+  inset: 10% 10% 19%;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  z-index: 3;
+  pointer-events: none;
+  color: #e2edff;
+  text-shadow: -1px 0 #ed5e9c99, 1px 0 #43ceffc7, 0 0 11px #82aeff;
+}
+.tunnel-messages p {
+  position: absolute;
+  inset: 50% 0 auto;
+  margin: 0;
+  opacity: 0;
+  font-size: clamp(18px, 4vw, 62px);
+  transform-origin: 50% 0;
+  filter: blur(.4px);
+}
+.tunnel.memory-page {
+  background: radial-gradient(ellipse at 50% 43%, #23344a, #090f1b 43%, #030507 79%);
+}
+.tunnel-exit-light, .memory-exposure {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+}
+.tunnel-exit-light {
+  top: 50%;
+  left: 50%;
+  width: 210vmax;
+  height: 210vmax;
+  translate: -50% -50%;
+  scale: .007;
+  opacity: 0;
+  background: radial-gradient(circle closest-side, #c7ddf2 0 71%, #a1bcf7c7 83%, #739afe63 92%, transparent);
+}
+.memory-exposure {
+  inset: 0;
+  background: #c7ddf2;
+  animation: memory-exposure 1.55s cubic-bezier(.23, .65, .35, 1) both;
+}
+@keyframes memory-exposure {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.memory-room { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.memory-heading, .memory-door, .memory-compare { position: absolute; z-index: 3; }
+.memory-heading {
+  left: 5vw;
+  bottom: 12vh;
+  max-width: 90vw;
+  pointer-events: none;
+  text-shadow: 0 1px 7px #02040c, 0 0 14px #02040c;
+}
+.memory-heading h1 { font-size: clamp(23px, 4vw, 64px); margin: 0; letter-spacing: -.04em; }
+.memory-door {
+  top: 46%;
+  left: 50%;
+  translate: -50% -50%;
+  width: clamp(138px, 23vw, 260px);
+  height: 53%;
+  border: 5px ridge #334355;
+  background:
+    radial-gradient(circle at 88% 53%, #c0bb99 0 3px, #33322d 4px 7px, transparent 8px),
+    repeating-linear-gradient(90deg, transparent 0 9px, #070b182b 10px 12px),
+    linear-gradient(110deg, #222f3c, #121c27 70%, #090f17);
+  box-shadow: 0 12px 35px #000c;
+}
+.memory-door span { display: inline-block; padding: 8px; background: #080e1de8; }
+.memory-compare { bottom: 5vh; left: 5vw; background: #080e1de8; padding: 8px; border: 1px solid #8ab5ff85; }
+.tunnel .tunnel-sound { left: auto; right: clamp(16px, 5vw, 80px); bottom: auto; top: 63px; }
 .tunnel-controls {
   right: clamp(16px, 5vw, 80px);
   bottom: clamp(32px, 8vh, 90px);

@@ -1,18 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
 import PixelCursor, { trackPixelCursor } from './PixelCursor';
 import emblem from './media/emblem.png';
 import interferenceFootage from './media/microbg.mp4';
+import originalMemory from './media/session-original.jpg';
+import reconstructedMemory from './media/session-reconstruction.jpg';
 import { startSignal } from './signal';
 import './style.css';
 import './tunnel.css';
 
 const depth = 5.8;
 const ringCount = 18;
-const cruiseSpeed = 2.6;
+const destination = 54;
+const exitThreshold = destination - .5;
+const exitVisibleFrom = 39;
 const signalStrength = { current: .32 };
 const wrap = (value, length) => ((value % length) + length) % length;
+const messages = [
+  'Follow the sound.',
+  'Three knocks. An uneven pause.',
+  'You remember standing on this side.',
+  'Then why is the sound behind you?',
+];
 
 function createGrid() {
   const lines = [];
@@ -34,19 +43,99 @@ function createGrid() {
   return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
 }
 
-function Tunnel() {
+const memoryPath = import.meta.env.BASE_URL + 'memory/017/';
+
+export default function Tunnel(props) {
+  const [insideMemory, setInsideMemory] = useState(location.pathname === memoryPath);
+  const [emerging, setEmerging] = useState(false);
+  const [returning, setReturning] = useState(false);
+  const returnPath = useRef(insideMemory ? import.meta.env.BASE_URL + 'tunnel/' : location.href);
+  const previousTitle = useRef(insideMemory ? 'Memory Tunnel — MICROCOSMOS Co.' : document.title);
+  useEffect(() => {
+    if (!props.onClose) return;
+    return () => {
+      if (location.pathname === memoryPath) {
+        history.replaceState(history.state, '', returnPath.current);
+        document.title = previousTitle.current;
+      }
+    };
+  }, []);
+
+  function changePage(open) {
+    history.replaceState(history.state, '', open ? memoryPath : returnPath.current);
+    document.title = open ? 'Session 017 — MICROCOSMOS Co.' : previousTitle.current;
+    setEmerging(open && !matchMedia('(prefers-reduced-motion: reduce)').matches);
+    setReturning(!open);
+    setInsideMemory(open);
+  }
+
+  return insideMemory
+    ? <MemoryPage {...props} emerging={emerging} onBack={() => changePage(false)} />
+    : <TunnelScene {...props} returning={returning} onArrival={() => changePage(true)} />;
+}
+
+function MemoryPage({ onBack, soundOn, onToggleSound, emerging }) {
+  const host = useRef(null);
+  const touchStart = useRef(null);
+  const [doorOpen, setDoorOpen] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+  useEffect(() => trackPixelCursor(host.current), []);
+  useEffect(() => {
+    const page = host.current;
+    let reverseDistance = 0;
+    function reverse(event) {
+      if (event.ctrlKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      reverseDistance = Math.max(0, reverseDistance - event.deltaY * (event.deltaMode ? 28 : 1));
+      if (reverseDistance >= 48) onBack();
+    }
+    page.addEventListener('wheel', reverse, { passive: true });
+    return () => page.removeEventListener('wheel', reverse);
+  }, [onBack]);
+
+  return (
+    <section ref={host} className="crt tunnel memory-page" aria-label="Recovered memory 017"
+      onTouchStart={event => { touchStart.current = event.touches.length === 1 ? event.touches[0].clientY : null; }}
+      onTouchEnd={event => {
+        if (touchStart.current !== null && event.changedTouches[0].clientY - touchStart.current > 48) onBack();
+        touchStart.current = null;
+      }}>
+      {doorOpen && <img className="memory-room" alt={showSource
+        ? 'Dim kitchen with one glass of milk on the table'
+        : 'The same kitchen, with a second glass beside the first'}
+        src={showSource ? originalMemory : reconstructedMemory} />}
+      <button className="command tunnel-return" onClick={onBack} autoFocus>← BACK TO TUNNEL</button>
+      <img className="channel-mark" src={emblem} alt="" />
+      <header className="memory-heading">
+        <p className="concept-label">RECOVERED SESSION 017</p>
+        <h1>Someone at the door</h1>
+      </header>
+      {!doorOpen && <button className="memory-door" onClick={() => setDoorOpen(true)}>
+        <span className="command">OPEN THE DOOR</span>
+      </button>}
+      {doorOpen && <button className="command memory-compare" aria-pressed={showSource}
+        onClick={() => setShowSource(!showSource)}>SOURCE RECORD</button>}
+      {onToggleSound && <button className="command sound-toggle tunnel-sound" aria-label="Soundtrack"
+        aria-pressed={soundOn} onClick={onToggleSound}>SOUND {soundOn ? 'ON' : 'OFF'}</button>}
+      <div className="phosphor" aria-hidden="true" />
+      <div className="glass-gloss" aria-hidden="true" />
+      {emerging && <div className="memory-exposure" aria-hidden="true" />}
+      <PixelCursor />
+    </section>
+  );
+}
+
+function TunnelScene({ onClose, soundOn, onToggleSound, onArrival, returning }) {
   const host = useRef(null);
   const canvas = useRef(null);
   const grain = useRef(null);
   const footage = useRef(null);
-  const goal = useRef(0);
-  const direction = useRef(1);
+  const goal = useRef(returning ? destination - 8 : 0);
   const drag = useRef(null);
-  const [fragment, setFragment] = useState(0);
-  const [available, setAvailable] = useState(true);
+  const messagesLayer = useRef(null);
+  const exitLight = useRef(null);
 
   function travel(amount) {
-    goal.current += amount;
+    goal.current = THREE.MathUtils.clamp(goal.current + amount, 0, destination);
   }
 
   useEffect(() => trackPixelCursor(host.current), []);
@@ -58,15 +147,14 @@ function Tunnel() {
     try {
       renderer = new THREE.WebGLRenderer({ canvas: element, antialias: true, powerPreference: 'low-power' });
     } catch {
-      setAvailable(false);
-      return;
+      element.classList.add('tunnel-scene-unavailable');
     }
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#091238');
     scene.fog = new THREE.FogExp2('#091238', .035);
     const camera = new THREE.PerspectiveCamera(64, 1, .08, 116);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
+    renderer?.setPixelRatio(Math.min(devicePixelRatio, 1.6));
     const grid = createGrid();
     const gridMaterial = new THREE.LineBasicMaterial({ color: '#516fe4', transparent: true, opacity: .68 });
     const plane = new THREE.PlaneGeometry(4.9, 2.76);
@@ -89,9 +177,10 @@ function Tunnel() {
     });
 
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-    let position = 0;
-    let visibleFragment = -1;
+    let position = returning ? exitThreshold - .1 : 0;
+    let frame;
     let previousTime = 0;
+    const captions = [...messagesLayer.current.children];
 
     const resize = new ResizeObserver(() => {
       const { clientWidth: width, clientHeight: height } = element;
@@ -99,16 +188,25 @@ function Tunnel() {
       camera.aspect = width / height;
       camera.fov = width < 700 ? 76 : 64;
       camera.updateProjectionMatrix();
-      renderer.setSize(width, height, false);
+      renderer?.setSize(width, height, false);
     });
     resize.observe(element);
-    renderer.setAnimationLoop(time => {
+    function draw(time) {
       const elapsed = previousTime ? Math.min(50, time - previousTime) : 16;
       previousTime = time;
-      if (!reducedMotion.matches && !drag.current) {
-        goal.current += direction.current * cruiseSpeed * elapsed / 1000;
-      }
       position = reducedMotion.matches ? goal.current : THREE.MathUtils.damp(position, goal.current, 7, elapsed / 1000);
+      const approach = THREE.MathUtils.clamp((position - exitVisibleFrom) / (exitThreshold - exitVisibleFrom), 0, 1);
+      if (!reducedMotion.matches) {
+        exitLight.current.style.opacity = Math.min(1, approach * 4);
+        exitLight.current.style.scale = .007 + .993 * Math.pow(approach, 3.5);
+      }
+      captions.forEach((caption, index) => {
+        const distance = 9 + index * 12 - position;
+        const scale = 2.8 / Math.max(distance, 1.25);
+        const opacity = Math.min(1, (19 - distance) / 5, (distance - 1.25) / 2);
+        caption.style.opacity = Math.max(0, opacity);
+        caption.style.transform = `scale(${scale})`;
+      });
       const base = Math.floor(position / depth);
       const offset = position - base * depth;
       segments.forEach((segment, slot) => {
@@ -122,22 +220,22 @@ function Tunnel() {
         segment.card.rotation.set(side === 3 ? -Math.PI / 2 : side === 4 ? Math.PI / 2 : 0,
           side === 0 || side === 2 ? Math.PI / 2 : side === 1 ? -Math.PI / 2 : 0, 0);
       });
-      const nextFragment = wrap(Math.round(position / depth), ringCount);
-      if (nextFragment !== visibleFragment) {
-        visibleFragment = nextFragment;
-        setFragment(nextFragment);
+      if (position >= exitThreshold) {
+        onArrival();
+        return;
       }
-      renderer.render(scene, camera);
-    });
+      renderer?.render(scene, camera);
+      frame = requestAnimationFrame(draw);
+    }
+    frame = requestAnimationFrame(draw);
 
     function wheel(event) {
       if (event.ctrlKey || !event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault();
-      direction.current = Math.sign(event.deltaY);
-      travel(Math.max(-9, Math.min(9, event.deltaY * (event.deltaMode ? 28 : 1) * .027)));
+      travel(THREE.MathUtils.clamp(event.deltaY * (event.deltaMode ? 28 : 1) * .018, -3.5, 3.5));
     }
     function key(event) {
-      if (event.target.closest?.('button, a') || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
       const direction = { ArrowUp: -1, PageUp: -1, w: 1, ArrowDown: 1, PageDown: 1, s: -1 }[event.key];
       if (!direction) return;
       event.preventDefault();
@@ -150,17 +248,17 @@ function Tunnel() {
       root.removeEventListener('wheel', wheel);
       window.removeEventListener('keydown', key);
       resize.disconnect();
-      renderer.setAnimationLoop(null);
+      cancelAnimationFrame(frame);
       [texture, panelMaterial, grid, plane, backing, gridMaterial, edge].forEach(resource => resource.dispose());
-      renderer.dispose();
+      renderer?.dispose();
     };
   }, []);
 
   return (
-    <main ref={host} className="crt tunnel" aria-label="MICROCOSMOS Memory Tunnel">
+    <section ref={host} className="crt tunnel" aria-label="MICROCOSMOS Memory Tunnel">
       <canvas ref={canvas} className="tunnel-scene" aria-hidden="true"
         onPointerDown={event => {
-          if (!available || event.button !== 0) return;
+          if (event.button !== 0) return;
           drag.current = { id: event.pointerId, y: event.clientY };
           event.currentTarget.setPointerCapture(event.pointerId);
         }}
@@ -173,26 +271,31 @@ function Tunnel() {
       <canvas ref={grain} className="signal tunnel-grain" aria-hidden="true" />
       <video ref={footage} className="interference-footage tunnel-footage" src={interferenceFootage}
         autoPlay muted loop playsInline aria-hidden="true" />
-      <a className="command tunnel-return" href={import.meta.env.BASE_URL}>← RETURN TO MICROCOSMOS Co.</a>
+      {onClose
+        ? <button className="command tunnel-return" onClick={onClose} autoFocus>← EXIT TUNNEL</button>
+        : <a className="command tunnel-return" href={import.meta.env.BASE_URL}>← RETURN TO MICROCOSMOS Co.</a>}
       <img className="channel-mark" src={emblem} alt="" draggable="false" />
       <div className="tunnel-title">
         <p className="concept-label"><i aria-hidden="true" /> RECOVERED VISUAL ARCHIVE</p>
         <h1>Memory Tunnel</h1>
         <p className="tunnel-company">MICROCOSMOS Co. · Memory Restore VR Systems</p>
       </div>
-      {available && <div className="tunnel-controls">
-        <span>FRAGMENT {String(fragment + 1).padStart(2, '0')}</span>
+      <div className="tunnel-messages" ref={messagesLayer} aria-hidden="true">
+        {messages.map(message => <p key={message}>{message}</p>)}
+      </div>
+      <div className="tunnel-exit-light" ref={exitLight} aria-hidden="true" />
+      {onToggleSound && <button className="command sound-toggle tunnel-sound" aria-label="Soundtrack"
+        aria-pressed={soundOn} onClick={onToggleSound}>SOUND {soundOn ? 'ON' : 'OFF'}</button>}
+      <div className="tunnel-controls">
         <div>
           <button className="command" aria-label="Travel back" onClick={() => travel(-depth)}>↑</button>
           <button className="command" aria-label="Travel forward" onClick={() => travel(depth)}>↓</button>
         </div>
-        <span>SCROLL OR DRAG TO TRAVEL</span>
-      </div>}
+        <span>SCROLL OR DRAG TO GO DEEPER</span>
+      </div>
       <div className="phosphor" aria-hidden="true" />
       <div className="glass-gloss" aria-hidden="true" />
       <PixelCursor />
-    </main>
+    </section>
   );
 }
-
-createRoot(document.getElementById('root')).render(<Tunnel />);

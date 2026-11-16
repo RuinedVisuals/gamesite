@@ -588,4 +588,24 @@ h1 .brand-subtitle {
   .channel-pane { transition: none !important; }
   .channel-switch { display: none; }
 }
-.tunnel-link { text-decoration: none; }
+.command.tunnel-link {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border: 1px solid #739aff9c;
+  background: #152c69c9;
+  color: #e4eeff;
+  text-shadow: 0 0 8px #82abff;
+}
+.tunnel-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #070d2a;
+}
+.tunnel-loading { position: absolute; top: 24px; left: 5vw; }

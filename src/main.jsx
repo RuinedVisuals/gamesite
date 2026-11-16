@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Lenis from 'lenis';
 import { startSignal } from './signal';
@@ -18,9 +18,12 @@ import './style.css';
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const presaveUrl = import.meta.env.VITE_PRESAVE_URL?.trim();
 const presaveAvailable = /^https:\/\/[^\s]+$/i.test(presaveUrl ?? '');
+const Tunnel = lazy(() => import('./Tunnel'));
 
 function App() {
   const [phase, setPhase] = useState('boot');
+  const [tunnelOpen, setTunnelOpen] = useState(false);
+  const tunnelDialog = useRef(null);
   const [error, setError] = useState(false);
   const [channel, setChannel] = useState('film');
   const [discAngle, setDiscAngle] = useState(0);
@@ -83,6 +86,16 @@ function App() {
 
   function startMusic() {
     if (!musicDisabled.current) music.current.play().catch(() => {});
+  }
+
+  function openTunnel() {
+    startMusic();
+    setTunnelOpen(true);
+  }
+
+  function closeTunnel() {
+    tunnelDialog.current?.close();
+    setTunnelOpen(false);
   }
 
   function startIntro() {
@@ -318,6 +331,7 @@ function App() {
   }
 
   return (
+    <>
     <main ref={cursorRoot} className={`crt ${phase}${retained ? ' retained' : ''}${interference && phase !== 'boot' ? ' drifting' : ''}`} aria-label="MICROCOSMOS Co. — Memory Restore VR Systems">
       <audio ref={music} src={soundtrack} loop preload="auto" onPlay={() => setSoundOn(true)} onPause={() => setSoundOn(false)} />
       <div className="glass">
@@ -385,6 +399,7 @@ function App() {
             <div className="transmission-navigation">
               <p className="tune-hint"><span className="wheel-hint">SCROLL DOWN TO TUNE</span><span className="swipe-hint">SWIPE UP TO TUNE</span></p>
               <button className="command" onClick={() => tune('concept')}><ReconstructText active={phase === 'playback' && channel === 'film'} delay={160}>↓ CH 02 / SYSTEM BRIEFING</ReconstructText></button>
+              <button className="command tunnel-link" onClick={openTunnel}>▸ ENTER MEMORY TUNNEL</button>
             </div>
           </section>
           <section ref={briefing} className="concept channel-pane" data-active={channel === 'concept'} inert={channel !== 'concept'}
@@ -410,7 +425,7 @@ function App() {
             </div>
               <SessionComparison recall={recall} active={briefingActive} />
               <div className="briefing-actions">
-                <a className="command tunnel-link" href={import.meta.env.BASE_URL + "tunnel/"}><ReconstructText active={briefingActive} delay={430}>↗ MEMORY TUNNEL</ReconstructText></a>
+                <button className="command tunnel-link" onClick={openTunnel}>▸ ENTER MEMORY TUNNEL</button>
                 <button className="command" onClick={() => tune('film')}><ReconstructText active={briefingActive} delay={410}>↑ CH 01 / TRANSMISSION</ReconstructText></button>
                 <button className="command" onClick={() => scrollBriefing(discStage.current.offsetTop)}><ReconstructText active={briefingActive} delay={450}>↓ INSPECT DISC</ReconstructText></button>
               </div>
@@ -450,6 +465,17 @@ function App() {
       </div>
       <PixelCursor />
     </main>
+    {tunnelOpen && <dialog className="tunnel-dialog" aria-label="Memory Tunnel"
+      ref={element => {
+        tunnelDialog.current = element;
+        if (element && !element.open) element.showModal();
+      }}
+      onCancel={event => { event.preventDefault(); closeTunnel(); }}>
+      <Suspense fallback={<button className="command tunnel-loading" onClick={closeTunnel}>CONNECTING… · EXIT TUNNEL</button>}>
+        <Tunnel onClose={closeTunnel} soundOn={soundOn} onToggleSound={toggleMusic} />
+      </Suspense>
+    </dialog>}
+    </>
   );
 }
 

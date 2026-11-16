@@ -8,6 +8,7 @@ export default defineConfig({
       input: {
         home: fileURLToPath(new URL('./index.html', import.meta.url)),
         tunnel: fileURLToPath(new URL('./tunnel/index.html', import.meta.url)),
+        memory: fileURLToPath(new URL('./memory/017/index.html', import.meta.url)),
       },
     },
   },
