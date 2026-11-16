@@ -142,7 +142,6 @@ export default function SessionComparison({ recall, active }) {
       <div className="phosphor" aria-hidden="true" />
       <div className="glass-gloss" aria-hidden="true" />
       <div className="signal-drift" aria-hidden="true" />
-      <div className="vignette" aria-hidden="true" />
       <PixelCursor />
     </dialog>
   </>;

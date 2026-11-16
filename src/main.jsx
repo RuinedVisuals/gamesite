@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import Lenis from 'lenis';
 import { startSignal } from './signal';
 import Disc from './Disc';
 import Intro from './Intro';
@@ -7,6 +8,7 @@ import ReconstructText from './ReconstructText';
 import hiddenSignal from './media/recall.mp3';
 import hiddenSignalAltered from './media/recall-altered.mp3';
 import transmission from './media/micro.mp4';
+import interferenceFootage from './media/microbg.mp4';
 import soundtrack from './media/dwdekainstru.mp3';
 import emblem from './media/emblem.png';
 import SessionComparison, { sessions } from './SessionComparison';
@@ -18,7 +20,7 @@ const presaveUrl = import.meta.env.VITE_PRESAVE_URL?.trim();
 const presaveAvailable = /^https:\/\/[^\s]+$/i.test(presaveUrl ?? '');
 
 function App() {
-  const [phase, setPhase] = useState(reducedMotion ? 'ready' : 'boot');
+  const [phase, setPhase] = useState('boot');
   const [error, setError] = useState(false);
   const [channel, setChannel] = useState('film');
   const [discAngle, setDiscAngle] = useState(0);
@@ -26,6 +28,11 @@ function App() {
   const [retained, setRetained] = useState(false);
   const briefingActive = phase === 'playback' && channel === 'concept';
   const [interference, setInterference] = useState(false);
+  const [preludeFinished, setPreludeFinished] = useState(reducedMotion);
+  const [introStarted, setIntroStarted] = useState(false);
+  const startScreen = phase === 'boot' && preludeFinished && !introStarted;
+  const prelude = phase === 'boot' && !introStarted && !reducedMotion;
+  const footage = useRef(null);
   const [soundOn, setSoundOn] = useState(false);
   const music = useRef(null);
   const musicDisabled = useRef(false);
@@ -40,6 +47,7 @@ function App() {
   const heardSignal = useRef(false);
   const archive = useRef(null);
   const briefing = useRef(null);
+  const briefingScroll = useRef(null);
   const discStage = useRef(null);
   const extraTurn = useRef(0);
   const swipe = useRef(null);
@@ -53,11 +61,51 @@ function App() {
   useEffect(() => () => { audioContext.current?.close().catch(() => {}); }, []);
   useEffect(() => {
     music.current.volume = .42;
+    startMusic();
   }, []);
+
+  useEffect(() => {
+    const clip = footage.current;
+    if (reducedMotion) return;
+    if (prelude || clip.ended) clip.currentTime = 0;
+    let cancelled = false;
+    void clip.play().catch(() => {
+      if (prelude && !cancelled) setPreludeFinished(true);
+    });
+    const fallback = prelude ? window.setTimeout(() => {
+      if (clip.currentTime < .1) setPreludeFinished(true);
+    }, 4000) : undefined;
+    return () => {
+      cancelled = true;
+      window.clearTimeout(fallback);
+    };
+  }, [prelude]);
 
   function startMusic() {
     if (!musicDisabled.current) music.current.play().catch(() => {});
   }
+
+  function startIntro() {
+    startMusic();
+    setIntroStarted(true);
+  }
+
+  useEffect(() => {
+    if (!briefingActive) return;
+    const wrapper = briefing.current;
+    const smooth = new Lenis({
+      wrapper,
+      content: wrapper,
+      autoRaf: true,
+      virtualScroll: () => false,
+      lerp: .14,
+    });
+    briefingScroll.current = smooth;
+    return () => {
+      smooth.destroy();
+      briefingScroll.current = null;
+    };
+  }, [briefingActive]);
 
   function toggleMusic() {
     musicDisabled.current = !music.current.paused;
@@ -185,15 +233,25 @@ function App() {
 
   function moveBriefing(delta) {
     const panel = briefing.current;
-    if (channel !== 'concept' || (delta < 0 && panel.scrollTop <= 1)) return false;
+    const smooth = briefingScroll.current;
+    const target = smooth?.targetScroll ?? panel.scrollTop;
+    if (channel !== 'concept' || (delta < 0 && panel.scrollTop <= 1 && target <= 1)) return false;
     const limit = panel.scrollHeight - panel.clientHeight;
     if (delta > 0 && panel.scrollTop >= limit - 1) {
       extraTurn.current += delta;
       setDiscAngle(150 + extraTurn.current);
     } else {
-      panel.scrollTop += delta;
+      scrollBriefing(target + delta);
     }
     return true;
+  }
+
+  function scrollBriefing(target) {
+    if (briefingScroll.current) {
+      briefingScroll.current.scrollTo(target, { immediate: reducedMotion, programmatic: false, lerp: .14 });
+    } else {
+      briefing.current.scrollTop = target;
+    }
   }
 
   useEffect(() => {
@@ -239,13 +297,14 @@ function App() {
         return;
       }
       if (event.target.closest?.('button, input, video')) return;
-      if (event.key === 'Enter' && phase === 'ready') begin();
+      if (event.key === 'Enter' && !event.repeat && startScreen) startIntro();
+      else if (event.key === 'Enter' && phase === 'ready') begin();
       else return;
       event.preventDefault();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [phase, channel]);
+  }, [phase, channel, startScreen]);
 
   function rotate(event) {
     if (!drag.current) return;
@@ -266,9 +325,20 @@ function App() {
         <video ref={video} className={`transmission${phase === 'playback' && channel === 'film' ? ' transmission-primary' : ''}`}
           autoPlay loop muted playsInline preload="auto" src={transmission}
           onError={() => setError(true)} aria-hidden="true" />
+        <video ref={footage} className={`interference-footage${prelude ? ' footage-prelude' : interference && phase !== 'boot' ? ' footage-burst' : ''}`}
+          muted playsInline preload="auto" loop src={interferenceFootage} aria-hidden="true"
+          onTimeUpdate={event => {
+            if (prelude && !preludeFinished && event.currentTarget.currentTime >= 3) setPreludeFinished(true);
+          }}
+          onError={() => setPreludeFinished(true)} />
         <div className="network-trace" aria-hidden="true" />
         {['boot', 'ready'].includes(phase) && <span className="terminal-status"><i aria-hidden="true" /><ReconstructText active>{phase === 'boot' ? 'ESTABLISHING LINK' : 'RECALL TERMINAL ONLINE'}</ReconstructText></span>}
-        {phase === 'boot' && <Intro reducedMotion={reducedMotion} signal={intensity} onExit={finishIntro} onInteract={startMusic} onRecall={setRecall} />}
+        {startScreen && <section className="start-screen" aria-label="Start MICROCOSMOS">
+          <p className="start-motto">The past is still running.</p>
+          <button className="command game-start" onClick={startIntro}><span aria-hidden="true">▸</span> PRESS START</button>
+          <p>ENTER ↵</p>
+        </section>}
+        {phase === 'boot' && introStarted && <Intro reducedMotion={reducedMotion} signal={intensity} onExit={finishIntro} onInteract={startMusic} onRecall={setRecall} />}
         {phase === 'starting' && <div className="session-closed" role="status"><ReconstructText active>Session started.</ReconstructText></div>}
         {phase === 'closing' && <div className="session-closed" role="status"><span><ReconstructText active>Session closed.</ReconstructText></span><span><ReconstructText active delay={350}>One memory was retained.</ReconstructText></span></div>}
         {phase === 'ready' && <section className="reveal" aria-labelledby="title">
@@ -291,7 +361,14 @@ function App() {
           <p className="whisper"><ReconstructText active delay={580}>Personal memory reconstruction in virtual reality.</ReconstructText></p>
           <button ref={access} className="command access" onClick={begin}><span aria-hidden="true">▸</span> <ReconstructText active delay={730}>ACCESS TRANSMISSION</ReconstructText></button>
         </section>}
-        {phase === 'ready' && <button className="command rewind" onClick={() => { setRecall(null); setPhase('boot'); }}>↺ REPLAY INTRO</button>}
+        {phase === 'ready' && <button className="command rewind" onClick={() => {
+          music.current.pause();
+          if (music.current.readyState) music.current.currentTime = 0;
+          setRecall(null);
+          setPreludeFinished(reducedMotion);
+          setIntroStarted(false);
+          setPhase('boot');
+        }}>↺ REPLAY INTRO</button>}
         <div ref={archive} className="channels" hidden={phase !== 'playback'} tabIndex={0} role="region" aria-label="Transmission and concept"
           onTouchStart={event => { swipe.current = event.touches.length === 1 ? event.touches[0].clientY : null; }}
           onTouchCancel={() => { swipe.current = null; }}
@@ -334,7 +411,7 @@ function App() {
               <SessionComparison recall={recall} active={briefingActive} />
               <div className="briefing-actions">
                 <button className="command" onClick={() => tune('film')}><ReconstructText active={briefingActive} delay={410}>↑ CH 01 / TRANSMISSION</ReconstructText></button>
-                <button className="command" onClick={() => discStage.current.scrollIntoView({ behavior: reducedMotion ? 'instant' : 'smooth', block: 'start' })}><ReconstructText active={briefingActive} delay={450}>↓ INSPECT DISC</ReconstructText></button>
+                <button className="command" onClick={() => scrollBriefing(discStage.current.offsetTop)}><ReconstructText active={briefingActive} delay={450}>↓ INSPECT DISC</ReconstructText></button>
               </div>
             </div>
             <div ref={discStage} className="disc-stage">
@@ -354,7 +431,7 @@ function App() {
                     <button type="button" className="command presave" disabled>ACCESS PRE-SAVE</button>
                     <span>PRE-SAVE NOT YET OPEN</span>
                   </div>}
-              <button className="command" onClick={() => briefing.current.scrollTo({ top: 0, behavior: reducedMotion ? 'instant' : 'smooth' })}>↑ BACK TO BRIEFING</button>
+              <button className="command" onClick={() => scrollBriefing(0)}>↑ BACK TO BRIEFING</button>
             </div>
           </section>
           <div key={channel} className="channel-switch" aria-hidden="true" />
@@ -369,7 +446,6 @@ function App() {
         <div className="phosphor" aria-hidden="true" />
         <div className="glass-gloss" aria-hidden="true" />
         <div className="signal-drift" aria-hidden="true" />
-        <div className="vignette" aria-hidden="true" />
       </div>
       <PixelCursor />
     </main>
